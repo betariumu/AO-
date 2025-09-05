@@ -1,0 +1,99 @@
+{
+    "detection_rules": {
+        "ransomware_extensions": [
+            ".lock",
+            ".encrypted",
+            ".xyz",
+            ".crypt",
+            ".rnsm"
+        ],
+        "suspicious_processes": [
+            "powershell.exe",
+            "wscript.exe",
+            "cscript.exe"
+        ],
+        "suspicious_parent_child_relations": {
+            "powershell.exe": [
+                "explorer.exe",
+                "cmd.exe"
+            ],
+            "cmd.exe": [
+                "explorer.exe",
+                "powershell.exe"
+            ]
+        },
+        "suspicious_cmd_args_keywords": [
+            "-encodedcommand",
+            "iex",
+            "system.net.webclient"
+        ],
+        "suspicious_exe_path_keywords": [
+            "temp",
+            "appdata\\local\\temp",
+            "programdata",
+            "users\\public",
+            "windows\\temp",
+            "recycle.bin"
+        ],
+        "living_off_the_land_rules": {
+            "powershell.exe": [
+                "Invoke-Expression",
+                "DownloadString",
+                "DownloadFile",
+                "IEX"
+            ],
+            "cmd.exe": [
+                "certutil.exe -urlcache",
+                "bitsadmin /transfer",
+                "echo"
+            ]
+        }
+    },
+    "detection_thresholds": {
+        "rapid_file_activity": {
+            "count": 10,
+            "time_window": 5
+        },
+        "mass_creation": {
+            "count": 20,
+            "time_window": 10
+        },
+        "mass_deletion": {
+            "count": 15,
+            "time_window": 10
+        },
+        "abnormal_memory_increase": {
+            "min_increase_mb": 50,
+            "time_window_seconds": 10,
+            "min_data_points": 3
+        },
+        "baseline_deviation_factor": 2.0,
+        "baseline_learning_period_seconds": 300,
+        "min_events_for_baseline": 5,
+        "per_process_memory_threshold": 1.5,
+        "per_process_learning_period_seconds": 180
+    },
+    "whitelist": {
+        "allowed_exe_paths": [
+            "C:\\Program Files\\",
+            "C:\\Program Files (x86)\\",
+            "C:\\Windows\\",
+            "C:\\Users\\YOUR_USERNAME\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+            "C:\\Users\\YOUR_USERNAME\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
+            "C:\\ProgramData\\Lenovo\\Vantage\\Addins\\BatteryWidgetAddin\\3.0.0.163\\BatteryWidgetHost\\BatteryWidgetHost.exe",
+            "C:\\ProgramData\\Lenovo\\Udc\\Hosts\\x64\\AppProvisioningPlugin.exe",
+            "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.25070.5-0\\MsMpEng.exe",
+            "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.25070.5-0\\NisSrv.exe"
+        ],
+        "allowed_parent_child_relations": [],
+        "allowed_cmd_args": [
+            "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.4.2.0_x64__8wekyb3d8bbwe\\pwsh.exe -noprofile -file \"C:\\Users\\YOUR_USERNAME\\Documents\\WindowsPowerShell\\Modules\\Pester\\4.10.1\\Pester.psm1\""
+        ]
+    },
+    "monitoring_paths": [
+        "C:\\Users\\YOUR_USERNAME\\Documents"
+    ],
+    "ui_settings": {
+        "theme_mode": "system"
+    }
+}
