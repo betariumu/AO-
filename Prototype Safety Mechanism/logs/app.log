@@ -1,0 +1,68 @@
+2025-08-28 09:54:32,993 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 09:56:33,845 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 09:56:33,848 - console_log - INFO - [SYSTEM_MEMORY_TASK] System memory monitoring thread started.
+2025-08-28 09:56:35,842 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 09:56:35,844 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 09:56:36,652 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 09:56:36,653 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 09:56:37,134 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 09:56:37,137 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 09:56:38,315 - console_log - INFO - 監視を開始します: C:\試製保安機構
+2025-08-28 09:56:38,318 - console_log - ERROR - 監視の開始に失敗しました: RealtimeDetector.__init__() got an unexpected keyword argument 'path_to_watch'
+Traceback (most recent call last):
+  File "c:\試製保安機構\main.py", line 204, in on_monitoring_toggled
+    detector_instance = RealtimeDetector(
+        path_to_watch=monitoring_path,
+        ui_callback=ui_callback,
+        config=config # 修正: config.jsonの内容を渡す
+    )
+TypeError: RealtimeDetector.__init__() got an unexpected keyword argument 'path_to_watch'
+2025-08-28 09:56:49,562 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 09:56:49,563 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 09:57:31,158 - console_log - INFO - 監視を停止します。
+2025-08-28 10:41:27,516 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:27,521 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:30,070 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:30,074 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:30,751 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:30,757 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:31,294 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:31,299 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:31,535 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:31,540 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:31,844 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:31,848 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:32,012 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,017 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:32,149 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,153 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:32,320 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,324 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:32,472 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,474 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:32,631 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,635 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:32,772 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,776 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:32,957 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:32,986 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:33,362 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:33,367 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:33,571 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:33,577 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:33,724 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:33,730 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:41:33,892 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:33,896 - console_log - INFO - テーマを light に変更しました。
+2025-08-28 10:41:34,084 - console_log - INFO - 設定ファイルを保存しました。
+2025-08-28 10:41:34,089 - console_log - INFO - テーマを dark に変更しました。
+2025-08-28 10:42:05,701 - console_log - INFO - 監視を開始します: C:\decoy_software.py
+2025-08-28 10:42:05,706 - console_log - ERROR - 監視の開始に失敗しました: RealtimeDetector.__init__() got an unexpected keyword argument 'path_to_watch'
+Traceback (most recent call last):
+  File "c:\試製保安機構\main.py", line 204, in on_monitoring_toggled
+    detector_instance = RealtimeDetector(
+        path_to_watch=monitoring_path,
+        ui_callback=ui_callback,
+        config=config # 修正: config.jsonの内容を渡す
+    )
+TypeError: RealtimeDetector.__init__() got an unexpected keyword argument 'path_to_watch'
