@@ -71,15 +71,18 @@
         "baseline_learning_period_seconds": 300,
         "min_events_for_baseline": 5,
         "per_process_memory_threshold": 1.5,
-        "per_process_learning_period_seconds": 180
+        "per_process_learning_period_seconds": 180,
+        "heap_scan_interval_seconds": 30,
+        "heap_baseline_learning_period_seconds": 3600,
+        "heap_deviation_threshold": 1.5
     },
     "whitelist": {
         "allowed_exe_paths": [
             "C:\\Program Files\\",
             "C:\\Program Files (x86)\\",
             "C:\\Windows\\",
-            "C:\\Users\\YOUR_USERNAME\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
-            "C:\\Users\\YOUR_USERNAME\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
+            "C:\\Users\\karew\\AppData\\Local\\Programs\\Python\\Python313\\python.exe",
+            "C:\\Users\\karew\\AppData\\Local\\Google\\Chrome\\Application\\chrome.exe",
             "C:\\ProgramData\\Lenovo\\Vantage\\Addins\\BatteryWidgetAddin\\3.0.0.163\\BatteryWidgetHost\\BatteryWidgetHost.exe",
             "C:\\ProgramData\\Lenovo\\Udc\\Hosts\\x64\\AppProvisioningPlugin.exe",
             "C:\\ProgramData\\Microsoft\\Windows Defender\\Platform\\4.18.25070.5-0\\MsMpEng.exe",
@@ -87,11 +90,11 @@
         ],
         "allowed_parent_child_relations": [],
         "allowed_cmd_args": [
-            "C:\\Program Files\\WindowsApps\\Microsoft.PowerShell_7.4.2.0_x64__8wekyb3d8bbwe\\pwsh.exe -noprofile -file \"C:\\Users\\YOUR_USERNAME\\Documents\\WindowsPowerShell\\Modules\\Pester\\4.10.1\\Pester.psm1\""
+            "C:\\Users\\karew\\Documents\\WindowsPowerShell\\Modules\\Pester\\4.10.1\\Pester.psm1"
         ]
     },
     "monitoring_paths": [
-        "C:\\Users\\YOUR_USERNAME\\Documents"
+        "C:\\Users\\karew\\Documents"
     ],
     "ui_settings": {
         "theme_mode": "system"

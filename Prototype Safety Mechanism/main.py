@@ -17,7 +17,9 @@ detection_message_queue = asyncio.Queue()
 system_memory_queue = asyncio.Queue()
 detector_process = None
 scan_progress_queue = asyncio.Queue()
-scan_summary_queue = asyncio.Queue() # スキャンサマリー用キュー
+scan_summary_queue = asyncio.Queue()
+# プロセス操作用
+process_action_queue = asyncio.Queue()
 
 # 各監視タスクのインスタンス
 system_memory_monitor_task = None
@@ -118,7 +120,10 @@ def get_or_create_config():
                 "baseline_learning_period_seconds": 300,
                 "min_events_for_baseline": 5,
                 "per_process_memory_threshold": 1.5,
-                "per_process_learning_period_seconds": 180
+                "per_process_learning_period_seconds": 180,
+                "heap_scan_interval_seconds": 30,
+                "heap_baseline_learning_period_seconds": 3600,
+                "heap_deviation_threshold": 1.5,
             },
             "whitelist": {
                 "allowed_exe_paths": [
@@ -206,7 +211,7 @@ async def update_detection_log(page):
             
             log_text = ft.Text(log_message)
             
-            if message_data.get("type") == "プロセスごとのメモリ逸脱" or message_data.get("type") == "異常なメモリ使用量の検出":
+            if message_data.get("type") in ["プロセスごとのメモリ逸脱", "異常なメモリ使用量の検出", "ヒープメタデータ異常"]:
                 memory_detection_log_list.controls.insert(0, log_text)
             else:
                 detection_log_list.controls.insert(0, log_text)
@@ -263,6 +268,13 @@ async def handle_detector_output(reader, page):
                 
                 if message_type == "detection":
                     await detection_message_queue.put(message)
+                    
+                    details = message.get('data', {}).get('details', '')
+                    proc_pid = message.get('data', {}).get('process_pid')
+                    
+                    if proc_pid:
+                        show_threat_dialog(page, details, proc_pid)
+
                 elif message_type == "progress":
                     await scan_progress_queue.put(message.get("data"))
                 elif message_type == "scan_summary":
@@ -315,6 +327,56 @@ def show_scan_summary_dialog(page, summary_data):
     page.dialog = dialog
     page.dialog.open = True
     page.update()
+
+def show_threat_dialog(page, details, pid):
+    "脅威検出時にユーザーの対応を求めるダイアログ"
+    
+    def on_quarantine_click(e):
+        page.close_dialog()
+        print(f"プロセス {pid} を隔離します...")
+        asyncio.create_task(quarantine_process(pid))
+
+    def on_terminate_click(e):
+        page.close_dialog()
+        print(f"プロセス {pid} を強制終了します...")
+        asyncio.create_task(terminate_process(pid))
+        
+    dialog_content = ft.Column(
+        [
+            ft.Text("脅威が検出されました！", size=20, weight=ft.FontWeight.BOLD),
+            ft.Text(f"内容: {details}"),
+            ft.Text(f"プロセスID: {pid}"),
+            ft.Container(height=20),
+            ft.Text("このプロセスをどうしますか？", size=16),
+            ft.Row([
+                ft.ElevatedButton("隔離 (一時停止)", on_click=on_quarantine_click, bgcolor=Colors.ORANGE_500, color=Colors.WHITE),
+                ft.ElevatedButton("強制終了", on_click=on_terminate_click, bgcolor=Colors.RED_500, color=Colors.WHITE),
+            ], alignment=ft.MainAxisAlignment.CENTER)
+        ]
+    )
+    
+    dialog = ft.AlertDialog(
+        modal=True,
+        title=ft.Text("脅威検出！"),
+        content=dialog_content,
+    )
+    
+    page.dialog = dialog
+    page.dialog.open = True
+    page.update()
+    
+async def quarantine_process(pid):
+    """プロセスを隔離（一時停止）するコマンドをdetector.pyに送信"""
+    command_to_send = {"type": "quarantine", "pid": pid}
+    detector_process.stdin.write((json.dumps(command_to_send) + "\n").encode('utf-8'))
+    await detector_process.stdin.drain()
+
+async def terminate_process(pid):
+    """プロセスを強制終了するコマンドをdetector.pyに送信"""
+    command_to_send = {"type": "terminate", "pid": pid}
+    detector_process.stdin.write((json.dumps(command_to_send) + "\n").encode('utf-8'))
+    await detector_process.stdin.drain()
+
 
 async def handle_scan_button_click(e, scan_type):
     global detector_process

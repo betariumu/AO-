@@ -14,7 +14,6 @@ import hashlib
 import ctypes
 import math
 import sys
-import requests
 import aiohttp
 import asyncio
 
@@ -37,6 +36,45 @@ HEARTBEAT_FILE = "heartbeat.tmp"
 HEARTBEAT_INTERVAL = 2
 MONITOR_TIMEOUT = 5
 
+# Windows APIの定義 (ctypes)
+class HEAPENTRY32(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_ulong),
+        ("th32ProcessID", ctypes.c_ulong),
+        ("th32HeapID", ctypes.c_ulong),
+        ("dwFlags", ctypes.c_ulong),
+        ("dwAddress", ctypes.c_ulong),
+        ("dwBlockSize", ctypes.c_ulong),
+        ("dwReserved", ctypes.c_ulong),
+        ("dwRes", ctypes.c_ulong)
+    ]
+class PROCESSENTRY32(ctypes.Structure):
+    _fields_ = [
+        ("dwSize", ctypes.c_ulong),
+        ("cntUsage", ctypes.c_ulong),
+        ("th32ProcessID", ctypes.c_ulong),
+        ("th32DefaultHeapID", ctypes.c_ulong),
+        ("th32ModuleID", ctypes.c_ulong),
+        ("cntThreads", ctypes.c_ulong),
+        ("th32ParentProcessID", ctypes.c_ulong),
+        ("pcPriClassBase", ctypes.c_long),
+        ("dwFlags", ctypes.c_ulong),
+        ("szExeFile", ctypes.c_char * 260)
+    ]
+kernel32 = ctypes.WinDLL('kernel32', use_last_error=True)
+Heap32ListFirst = kernel32.Heap32ListFirst
+Heap32ListNext = kernel32.Heap32ListNext
+HeapWalk = kernel32.HeapWalk
+OpenProcess = kernel32.OpenProcess
+CloseHandle = kernel32.CloseHandle
+PROCESS_ALL_ACCESS = 0x1FFFFF
+PROCESS_SUSPEND_RESUME = 0x0800
+THREAD_SUSPEND_RESUME = 0x0002
+
+# グローバルなベースラインデータ
+heap_baseline_data = defaultdict(lambda: {'block_sizes': deque(), 'executable_sizes': deque()})
+heap_baseline_learning_start_time = defaultdict(float)
+
 class RealtimeDetector:
     def __init__(self, config_file):
         self.config_file = config_file
@@ -52,6 +90,7 @@ class RealtimeDetector:
         self.event_handler.on_deleted = self.on_file_deleted
         self.process_monitor_thread = None
         self.scan_thread = None
+        self.heap_monitor_thread = None
 
     def load_config(self):
         try:
@@ -71,7 +110,10 @@ class RealtimeDetector:
                     "baseline_learning_period_seconds": 300,
                     "min_events_for_baseline": 5,
                     "per_process_memory_threshold": 1.5,
-                    "per_process_learning_period_seconds": 180
+                    "per_process_learning_period_seconds": 180,
+                    "heap_scan_interval_seconds": 30,
+                    "heap_baseline_learning_period_seconds": 3600,
+                    "heap_deviation_threshold": 1.5,
                 },
                 "whitelist": {},
                 "ui_settings": {},
@@ -101,6 +143,23 @@ class RealtimeDetector:
             sys.stdout.buffer.flush()
         except Exception as e:
             detector_logger.error(f"stdoutへのサマリー送信失敗: {e}")
+            
+    def _quarantine_or_terminate_process(self, pid, action):
+        """プロセスを一時停止または強制終了する"""
+        try:
+            p = psutil.Process(pid)
+            if action == "quarantine":
+                p.suspend()
+                detector_logger.info(f"プロセス {pid} を一時停止しました。")
+            elif action == "terminate":
+                p.terminate()
+                detector_logger.info(f"プロセス {pid} を強制終了しました。")
+        except psutil.NoSuchProcess:
+            detector_logger.warning(f"プロセス {pid} は存在しません。")
+        except psutil.AccessDenied:
+            detector_logger.error(f"プロセス {pid} へのアクセスが拒否されました。管理者権限で実行してください。")
+        except Exception as e:
+            detector_logger.error(f"プロセス操作中にエラーが発生しました: {e}")
 
     def start_monitoring(self):
         detector_logger.info("XDR監視を開始します。")
@@ -108,6 +167,11 @@ class RealtimeDetector:
         self.process_monitor_thread = threading.Thread(target=self.check_processes_and_memory_thread, daemon=True)
         self.process_monitor_thread.start()
         
+        # ヒープメタデータ監視スレッドを追加
+        if os.name == 'nt':
+            self.heap_monitor_thread = threading.Thread(target=self.heap_metadata_monitor_thread, daemon=True)
+            self.heap_monitor_thread.start()
+
         try:
             for path in self.config.get("monitoring_paths", []):
                 if os.path.exists(path):
@@ -125,6 +189,8 @@ class RealtimeDetector:
                     command = json.loads(line.decode('utf-8'))
                     if command["type"] == "scan":
                         threading.Thread(target=lambda: asyncio.run(self.start_scan(command["paths"])), daemon=True).start()
+                    elif command["type"] in ["quarantine", "terminate"]:
+                        threading.Thread(target=self._quarantine_or_terminate_process, args=(command["pid"], command["type"]), daemon=True).start()
                 except json.JSONDecodeError as e:
                     detector_logger.error(f"コマンドの解析に失敗しました: {e}")
 
@@ -143,44 +209,42 @@ class RealtimeDetector:
         except:
             return False
 
-    def detect_suspicious_processes(self):
-        """疑わしいプロセスや管理者権限で実行されているプロセスを検出する"""
+    def detect_suspicious_processes(self, p):
+        """個別のプロセスに対して疑わしい振る舞いを検出する"""
         suspicious_names = self.config['detection_rules']['suspicious_processes']
-        processes = psutil.process_iter(['name', 'exe', 'cmdline', 'pid', 'username'])
-        for p in processes:
-            try:
-                p_name = p.info['name'].lower()
-                p_pid = p.info['pid']
-                
-                if p_name in suspicious_names:
-                     self._send_detection_message({
-                        "type": "不審なプロセス",
-                        "details": f"不審なプロセス '{p.info['name']}' (PID: {p_pid}) を検出しました。"
-                    })
-                
-                if os.name == 'nt':
-                    try:
-                        PROCESS_QUERY_INFORMATION = 0x0400
-                        p_handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, p_pid)
-                        if p_handle:
-                            is_elevated = ctypes.c_bool(False)
-                            ctypes.windll.advapi32.IsTokenElevated(p_handle, ctypes.byref(is_elevated))
-                            if is_elevated:
-                                self._send_detection_message({
-                                    "type": "管理者権限プロセス",
-                                    "details": f"プロセス '{p.info['name']}' (PID: {p_pid}) が管理者権限で実行されています。"
-                                })
-                            ctypes.windll.kernel32.CloseHandle(p_handle)
-                    except Exception:
-                        pass
-            except (psutil.NoSuchProcess, psutil.AccessDenied):
-                continue
-    
+        p_name = p.info['name'].lower()
+        p_pid = p.info['pid']
+
+        if p_name in suspicious_names:
+            self._send_detection_message({
+                "type": "不審なプロセス",
+                "details": f"不審なプロセス '{p.info['name']}' (PID: {p_pid}) を検出しました。",
+                "process_pid": p_pid,
+            })
+        
+        # 管理者権限チェック
+        if os.name == 'nt' and not RealtimeDetector.is_admin():
+             try:
+                 PROCESS_QUERY_INFORMATION = 0x0400
+                 p_handle = ctypes.windll.kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, p_pid)
+                 if p_handle:
+                     is_elevated = ctypes.c_bool(False)
+                     ctypes.windll.advapi32.IsTokenElevated(p_handle, ctypes.byref(is_elevated))
+                     if is_elevated:
+                         self._send_detection_message({
+                             "type": "管理者権限プロセス",
+                             "details": f"プロセス '{p.info['name']}' (PID: {p_pid}) が管理者権限で実行されています。",
+                             "process_pid": p_pid,
+                         })
+                     ctypes.windll.kernel32.CloseHandle(p_handle)
+             except Exception:
+                 pass
+
     def check_processes_and_memory_thread(self):
         detector_logger.info("プロセス監視スレッドを開始します。")
         while self.is_monitoring:
             current_time = time.time()
-            running_processes = {p.pid: p for p in psutil.process_iter(['name', 'exe', 'cmdline'])}
+            running_processes = {p.pid: p for p in psutil.process_iter(['name', 'exe', 'cmdline', 'pid'])}
             
             for pid, p in running_processes.items():
                 if pid == os.getpid():
@@ -212,11 +276,98 @@ class RealtimeDetector:
                                     "baseline": f"{baseline:.2f} MB"
                                 }
                                 self._send_detection_message(message)
+                    
+                    self.detect_suspicious_processes(p)
                 except (psutil.NoSuchProcess, psutil.AccessDenied, ValueError):
                     continue
-            self.detect_suspicious_processes()
             time.sleep(1)
         detector_logger.info("プロセス監視スレッドを停止します。")
+        
+    def heap_metadata_monitor_thread(self):
+        """ヒープメタデータ監視スレッド (psutil memory_maps版)"""
+        detector_logger.info("ヒープメタデータ監視スレッドを開始します。")
+        while self.is_monitoring:
+            current_time = time.time()
+            for proc in psutil.process_iter(['pid', 'name']):
+                pid = proc.info['pid']
+                p_name = proc.info['name']
+                
+                # 自身のプロセスはスキップ
+                if pid == os.getpid():
+                    continue
+
+                try:
+                    # ベースライン学習期間の確認
+                    if pid not in heap_baseline_learning_start_time:
+                        heap_baseline_learning_start_time[pid] = current_time
+                    
+                    self._analyze_heap(proc)
+                    
+                except (psutil.NoSuchProcess, psutil.AccessDenied):
+                    detector_logger.debug(f"ヒープ分析に失敗しました (PID: {pid}, Name: {p_name}): アクセス拒否またはプロセスが存在しません。")
+                except Exception as e:
+                    detector_logger.debug(f"ヒープ分析に失敗しました (PID: {pid}, Name: {p_name}): {e}")
+
+            time.sleep(self.config['detection_thresholds']['heap_scan_interval_seconds'])
+        detector_logger.info("ヒープメタデータ監視スレッドを停止します。")
+
+    def _analyze_heap(self, process):
+        """指定されたプロセスのメモリマップを分析する"""
+        try:
+            maps = process.memory_maps()
+            total_block_size = 0
+            executable_blocks_size = 0
+            
+            for m in maps:
+                # `size`と`perms`属性の存在をチェックして堅牢性を確保
+                if hasattr(m, 'size') and hasattr(m, 'perms'):
+                    total_block_size += m.size
+                    if 'x' in m.perms:
+                        executable_blocks_size += m.size
+            
+            pid = process.pid
+            p_name = process.name()
+            
+            current_time = time.time()
+            learning_period = self.config['detection_thresholds']['heap_baseline_learning_period_seconds']
+            
+            if current_time - heap_baseline_learning_start_time[pid] < learning_period:
+                heap_baseline_data[pid]['block_sizes'].append(total_block_size)
+                heap_baseline_data[pid]['executable_sizes'].append(executable_blocks_size)
+            else:
+                # 異常性検知
+                if heap_baseline_data[pid]['block_sizes']:
+                    avg_block_size = sum(heap_baseline_data[pid]['block_sizes']) / len(heap_baseline_data[pid]['block_sizes'])
+                    deviation_factor = self.config['detection_thresholds']['heap_deviation_threshold']
+                    
+                    if total_block_size > avg_block_size * deviation_factor:
+                        self._send_detection_message({
+                            "type": "ヒープメタデータ異常",
+                            "details": f"プロセス '{p_name}' (PID: {pid}) が平均を大きく超えるヒープブロックを割り当てています。",
+                            "process_pid": pid,
+                        })
+
+                if heap_baseline_data[pid]['executable_sizes']:
+                    avg_exec_size = sum(heap_baseline_data[pid]['executable_sizes']) / len(heap_baseline_data[pid]['executable_sizes'])
+                    deviation_factor = self.config['detection_thresholds']['heap_deviation_threshold']
+
+                    if executable_blocks_size > avg_exec_size * deviation_factor:
+                        self._send_detection_message({
+                            "type": "ヒープメタデータ異常",
+                            "details": f"プロセス '{p_name}' (PID: {pid}) が異常なサイズの実行可能メモリ領域を割り当てています。",
+                            "process_pid": pid,
+                        })
+                        
+            # ベースラインデータのサイズ制限
+            while len(heap_baseline_data[pid]['block_sizes']) > 100:
+                heap_baseline_data[pid]['block_sizes'].popleft()
+            while len(heap_baseline_data[pid]['executable_sizes']) > 100:
+                heap_baseline_data[pid]['executable_sizes'].popleft()
+
+        except (psutil.NoSuchProcess, psutil.AccessDenied):
+            detector_logger.warning(f"プロセス {process.pid} のメモリマップへのアクセスが拒否されました。")
+        except Exception as e:
+            detector_logger.error(f"メモリマップ分析中に予期せぬエラー: {e}")
 
     async def start_scan(self, paths):
         """スキャンを実行し、進捗をUIに送信する"""
@@ -339,7 +490,8 @@ class RealtimeDetector:
                     if malicious_count > 0:
                         self._send_detection_message({
                             "type": "既知のマルウェア (VirusTotal)",
-                            "details": f"ファイル '{file_path}' がVirusTotalで{malicious_count}件のエンジンに悪意があると検出されました。"
+                            "details": f"ファイル '{file_path}' がVirusTotalで{malicious_count}件のエンジンに悪意があると検出されました。",
+                            "process_pid": None
                         })
                         return True
                 elif response.status == 404:
@@ -382,7 +534,8 @@ class RealtimeDetector:
         if len(self.file_activity_log[file_path]) >= count:
             message = {
                 "type": "一括アクティビティ検出",
-                "details": f"ファイル '{file_path}' で不審な一括{activity_type_key}アクティビティを検出しました。"
+                "details": f"ファイル '{file_path}' で不審な一括{activity_type_key}アクティビティを検出しました。",
+                "process_pid": None
             }
             self._send_detection_message(message)
 
